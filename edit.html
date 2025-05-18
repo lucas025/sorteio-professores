@@ -215,59 +215,165 @@
             displayHistory(data.fridayHistory);
         }
         
-        function displayHistory(history) {
-            const historyContainer = document.getElementById('fridayHistory');
-            historyContainer.innerHTML = '';
+    function displayHistory(history) {
+        const historyContainer = document.getElementById('fridayHistory');
+        historyContainer.innerHTML = '';
+        
+        if (history.length === 0) {
+            historyContainer.textContent = 'No history available.';
+            return;
+        }
+        
+        history.forEach((entry, index) => {
+            const historyItem = document.createElement('div');
+            historyItem.className = 'history-item';
             
-            if (history.length === 0) {
-                historyContainer.textContent = 'No history available.';
-                return;
-            }
+            // Date input
+            const dateLabel = document.createElement('strong');
+            dateLabel.textContent = 'Date: ';
+            historyItem.appendChild(dateLabel);
             
-            history.forEach((entry, index) => {
-                const historyItem = document.createElement('div');
-                historyItem.className = 'history-item';
+            const dateInput = document.createElement('input');
+            dateInput.type = 'date';
+            dateInput.value = entry.date;
+            dateInput.dataset.index = index;
+            dateInput.addEventListener('change', function(e) {
+                jsonData.fridayHistory[index].date = e.target.value;
+            });
+            historyItem.appendChild(dateInput);
+            historyItem.appendChild(document.createElement('br'));
+            
+            // Schedule section
+            const scheduleLabel = document.createElement('strong');
+            scheduleLabel.textContent = 'Schedule: ';
+            historyItem.appendChild(scheduleLabel);
+            historyItem.appendChild(document.createElement('br'));
+            
+            const scheduleTable = document.createElement('table');
+            scheduleTable.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>Professor</th>
+                        <th>Preferred</th>
+                        <th>Excluded</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            `;
+            
+            const scheduleBody = scheduleTable.querySelector('tbody');
+            
+            // Add schedule entries
+            entry.schedule.forEach((prof, profIndex) => {
+                const row = document.createElement('tr');
                 
-                // Date input
-                const dateInput = document.createElement('input');
-                dateInput.type = 'date';
-                dateInput.value = entry.date;
-                dateInput.dataset.index = index;
-                dateInput.dataset.field = 'date';
-                dateInput.addEventListener('change', function(e) {
-                    jsonData.fridayHistory[index].date = e.target.value;
+                // Professor name
+                const nameCell = document.createElement('td');
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.value = prof.name;
+                nameInput.addEventListener('change', function(e) {
+                    jsonData.fridayHistory[index].schedule[profIndex].name = e.target.value;
                 });
+                nameCell.appendChild(nameInput);
+                row.appendChild(nameCell);
                 
-                // Schedule input
-                const scheduleInput = document.createElement('input');
-                scheduleInput.type = 'text';
-                scheduleInput.value = entry.schedule.join(', ');
-                scheduleInput.dataset.index = index;
-                scheduleInput.dataset.field = 'schedule';
-                scheduleInput.addEventListener('change', function(e) {
-                    jsonData.fridayHistory[index].schedule = e.target.value.split(', ').map(name => name.trim());
+                // Preferred checkbox
+                const preferredCell = document.createElement('td');
+                const preferredCheckbox = document.createElement('input');
+                preferredCheckbox.type = 'checkbox';
+                preferredCheckbox.checked = prof.preferred;
+                preferredCheckbox.addEventListener('change', function(e) {
+                    jsonData.fridayHistory[index].schedule[profIndex].preferred = e.target.checked;
                 });
+                preferredCell.appendChild(preferredCheckbox);
+                row.appendChild(preferredCell);
+                
+                // Excluded checkbox
+                const excludedCell = document.createElement('td');
+                const excludedCheckbox = document.createElement('input');
+                excludedCheckbox.type = 'checkbox';
+                excludedCheckbox.checked = prof.excluded;
+                excludedCheckbox.addEventListener('change', function(e) {
+                    jsonData.fridayHistory[index].schedule[profIndex].excluded = e.target.checked;
+                });
+                excludedCell.appendChild(excludedCheckbox);
+                row.appendChild(excludedCell);
                 
                 // Remove button
+                const actionCell = document.createElement('td');
                 const removeButton = document.createElement('button');
                 removeButton.textContent = 'Remove';
                 removeButton.className = 'remove';
-                removeButton.dataset.index = index;
                 removeButton.addEventListener('click', function() {
-                    jsonData.fridayHistory.splice(index, 1);
+                    jsonData.fridayHistory[index].schedule.splice(profIndex, 1);
                     displayHistory(jsonData.fridayHistory);
                 });
+                actionCell.appendChild(removeButton);
+                row.appendChild(actionCell);
                 
-                historyItem.innerHTML = `<strong>Date:</strong> `;
-                historyItem.appendChild(dateInput);
-                historyItem.innerHTML += `<br><strong>Schedule:</strong> `;
-                historyItem.appendChild(scheduleInput);
-                historyItem.appendChild(document.createElement('br'));
-                historyItem.appendChild(removeButton);
-                
-                historyContainer.appendChild(historyItem);
+                scheduleBody.appendChild(row);
             });
-        }
+            
+            historyItem.appendChild(scheduleTable);
+            
+            // Excluded Professors Section
+            const excludedLabel = document.createElement('strong');
+            excludedLabel.textContent = 'Excluded Professors: ';
+            historyItem.appendChild(document.createElement('br'));
+            historyItem.appendChild(excludedLabel);
+            
+            if (!entry.excludedProfessors) entry.excludedProfessors = [];
+            
+            const excludedInput = document.createElement('input');
+            excludedInput.type = 'text';
+            excludedInput.value = entry.excludedProfessors.join(', ');
+            excludedInput.style.width = '100%';
+            excludedInput.addEventListener('change', function(e) {
+                jsonData.fridayHistory[index].excludedProfessors = e.target.value ? 
+                    e.target.value.split(',').map(name => name.trim()) : [];
+            });
+            historyItem.appendChild(excludedInput);
+            
+            // Add professor to schedule button
+            const addProfBtn = document.createElement('button');
+            addProfBtn.textContent = 'Add Professor to Schedule';
+            addProfBtn.addEventListener('click', function() {
+                const name = prompt('Enter professor name:');
+                if (name) {
+                    if (!jsonData.fridayHistory[index].schedule) {
+                        jsonData.fridayHistory[index].schedule = [];
+                    }
+                    jsonData.fridayHistory[index].schedule.push({
+                        name: name,
+                        preferred: false,
+                        excluded: false
+                    });
+                    displayHistory(jsonData.fridayHistory);
+                }
+            });
+            
+            // Remove history entry button
+            const removeEntryBtn = document.createElement('button');
+            removeEntryBtn.textContent = 'Remove Entry';
+            removeEntryBtn.className = 'remove';
+            removeEntryBtn.addEventListener('click', function() {
+                jsonData.fridayHistory.splice(index, 1);
+                displayHistory(jsonData.fridayHistory);
+            });
+            
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'button-container';
+            buttonContainer.appendChild(addProfBtn);
+            buttonContainer.appendChild(removeEntryBtn);
+            
+            historyItem.appendChild(document.createElement('br'));
+            historyItem.appendChild(buttonContainer);
+            
+            historyContainer.appendChild(historyItem);
+        });
+    }
         
         function updateData(event) {
             const index = parseInt(event.target.dataset.index);
