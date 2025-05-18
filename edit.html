@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professor Data Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .button-container {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button.remove {
+            background-color: #f44336;
+        }
+        button.remove:hover {
+            background-color: #d32f2f;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        input[type="text"], input[type="date"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        input[type="checkbox"] {
+            transform: scale(1.5);
+        }
+        .history-section {
+            margin-top: 30px;
+        }
+        .history-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .add-form {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .form-row {
+            margin-bottom: 10px;
+        }
+        .form-row label {
+            display: block;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container"></div>
+        <h1>Professor Data Editor</h1>
+        
+        <div class="button-container"></div>
+            <input type="file" id="fileInput" accept=".json" style="display: none;">
+            <button onclick="document.getElementById('fileInput').click()">Upload JSON File</button>
+            <button id="downloadBtn" disabled>Download Edited JSON</button>
+        </div>
+        
+        <div id="editorContainer" style="display: none;"></div>
+            <h2>Professors</h2>
+            <button id="addProfessorBtn">Add New Professor</button>
+            
+            <div id="addProfessorForm" class="add-form" style="display: none;">
+                <h3>Add New Professor</h3>
+                <div class="form-row">
+                    <label for="newName">Name:</label>
+                    <input type="text" id="newName" required>
+                </div>
+                <div class="form-row">
+                    <label for="newFridayCount">Friday Count:</label>
+                    <input type="number" id="newFridayCount" value="0" min="0">
+                </div>
+                <div class="form-row">
+                    <label for="newLastSelected">Last Selected:</label>
+                    <input type="date" id="newLastSelected">
+                </div>
+                <div class="form-row"></div>
+                    <label for="newPrefersFriday">Prefers Friday:</label>
+                    <input type="checkbox" id="newPrefersFriday">
+                </div>
+                <button id="saveNewProfessorBtn">Add Professor</button>
+                <button id="cancelAddBtn">Cancel</button>
+            </div>
+            
+            <table id="professorsTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Friday Count</th>
+                        <th>Last Selected</th>
+                        <th>Prefers Friday</th>
+                    </tr>
+                </thead>
+                <tbody id="professorsTableBody"></tbody>
+                    <!-- Table rows will be added dynamically -->
+                </tbody>
+            </table>
+            
+            <div class="history-section">
+                <h2>Friday History</h2>
+                <div id="fridayHistory"></div>
+                    <!-- History will be displayed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let jsonData = null;
+        
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    jsonData = JSON.parse(e.target.result);
+                    displayData(jsonData);
+                    document.getElementById('editorContainer').style.display = 'block';
+                    document.getElementById('downloadBtn').disabled = false;
+                } catch (error) {
+                    alert('Error parsing JSON file: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        });
+        
+        function displayData(data) {
+            const tableBody = document.getElementById('professorsTableBody');
+            tableBody.innerHTML = '';
+            
+            data.professors.forEach((professor, index) => {
+                const row = document.createElement('tr');
+                
+                // Name cell
+                const nameCell = document.createElement('td');
+                nameCell.textContent = professor.name;
+                row.appendChild(nameCell);
+                
+                // Friday Count cell
+                const countCell = document.createElement('td');
+                const countInput = document.createElement('input');
+                countInput.type = 'number';
+                countInput.value = professor.fridayCount;
+                countInput.min = 0;
+                countInput.dataset.index = index;
+                countInput.dataset.field = 'fridayCount';
+                countInput.addEventListener('change', updateData);
+                countCell.appendChild(countInput);
+                row.appendChild(countCell);
+                
+                // Last Selected cell
+                const dateCell = document.createElement('td');
+                const dateInput = document.createElement('input');
+                dateInput.type = 'date';
+                dateInput.value = professor.lastSelected;
+                dateInput.dataset.index = index;
+                dateInput.dataset.field = 'lastSelected';
+                dateInput.addEventListener('change', updateData);
+                dateCell.appendChild(dateInput);
+                row.appendChild(dateCell);
+                
+                // Prefers Friday cell
+                const prefersCell = document.createElement('td');
+                const prefersCheckbox = document.createElement('input');
+                prefersCheckbox.type = 'checkbox';
+                prefersCheckbox.checked = professor.prefersFriday;
+                prefersCheckbox.dataset.index = index;
+                prefersCheckbox.dataset.field = 'prefersFriday';
+                prefersCheckbox.addEventListener('change', updateData);
+                prefersCell.appendChild(prefersCheckbox);
+                row.appendChild(prefersCell);
+                
+                tableBody.appendChild(row);
+            });
+            
+            // Display Friday history
+            displayHistory(data.fridayHistory);
+        }
+        
+        function displayHistory(history) {
+            const historyContainer = document.getElementById('fridayHistory');
+            historyContainer.innerHTML = '';
+            
+            if (history.length === 0) {
+                historyContainer.textContent = 'No history available.';
+                return;
+            }
+            
+            history.forEach((entry, index) => {
+                const historyItem = document.createElement('div');
+                historyItem.className = 'history-item';
+                
+                // Date input
+                const dateInput = document.createElement('input');
+                dateInput.type = 'date';
+                dateInput.value = entry.date;
+                dateInput.dataset.index = index;
+                dateInput.dataset.field = 'date';
+                dateInput.addEventListener('change', function(e) {
+                    jsonData.fridayHistory[index].date = e.target.value;
+                });
+                
+                // Schedule input
+                const scheduleInput = document.createElement('input');
+                scheduleInput.type = 'text';
+                scheduleInput.value = entry.schedule.join(', ');
+                scheduleInput.dataset.index = index;
+                scheduleInput.dataset.field = 'schedule';
+                scheduleInput.addEventListener('change', function(e) {
+                    jsonData.fridayHistory[index].schedule = e.target.value.split(', ').map(name => name.trim());
+                });
+                
+                // Remove button
+                const removeButton = document.createElement('button');
+                removeButton.textContent = 'Remove';
+                removeButton.className = 'remove';
+                removeButton.dataset.index = index;
+                removeButton.addEventListener('click', function() {
+                    jsonData.fridayHistory.splice(index, 1);
+                    displayHistory(jsonData.fridayHistory);
+                });
+                
+                historyItem.innerHTML = `<strong>Date:</strong> `;
+                historyItem.appendChild(dateInput);
+                historyItem.innerHTML += `<br><strong>Schedule:</strong> `;
+                historyItem.appendChild(scheduleInput);
+                historyItem.appendChild(document.createElement('br'));
+                historyItem.appendChild(removeButton);
+                
+                historyContainer.appendChild(historyItem);
+            });
+        }
+        
+        function updateData(event) {
+            const index = parseInt(event.target.dataset.index);
+            const field = event.target.dataset.field;
+            let value = event.target.value;
+            
+            if (event.target.type === 'checkbox') {
+                value = event.target.checked;
+            } else if (field === 'fridayCount') {
+                value = parseInt(value);
+            }
+            
+            jsonData.professors[index][field] = value;
+        }
+        
+        document.getElementById('downloadBtn').addEventListener('click', function() {
+            if (!jsonData) {
+                alert('No data to download');
+                return;
+            }
+            
+            const jsonString = JSON.stringify(jsonData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'professors_edited.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+        
+        // Add new professor functionality
+        document.getElementById('addProfessorBtn').addEventListener('click', function() {
+            document.getElementById('addProfessorForm').style.display = 'block';
+            document.getElementById('newName').focus();
+        });
+        
+        document.getElementById('cancelAddBtn').addEventListener('click', function() {
+            document.getElementById('addProfessorForm').style.display = 'none';
+            clearNewProfessorForm();
+        });
+        
+        document.getElementById('saveNewProfessorBtn').addEventListener('click', function() {
+            const name = document.getElementById('newName').value.trim();
+            if (!name) {
+                alert('Professor name is required');
+                return;
+            }
+            
+            const fridayCount = parseInt(document.getElementById('newFridayCount').value) || 0;
+            const lastSelected = document.getElementById('newLastSelected').value || '';
+            const prefersFriday = document.getElementById('newPrefersFriday').checked;
+            
+            const newProfessor = {
+                name: name,
+                fridayCount: fridayCount,
+                lastSelected: lastSelected,
+                prefersFriday: prefersFriday
+            };
+            
+            jsonData.professors.push(newProfessor);
+            displayData(jsonData);
+            document.getElementById('addProfessorForm').style.display = 'none';
+            clearNewProfessorForm();
+        });
+        
+        function clearNewProfessorForm() {
+            document.getElementById('newName').value = '';
+            document.getElementById('newFridayCount').value = '0';
+            document.getElementById('newLastSelected').value = '';
+            document.getElementById('newPrefersFriday').checked = false;
+        }
+    </script>
+</body>
+</html>
