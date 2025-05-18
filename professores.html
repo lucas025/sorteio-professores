@@ -71,6 +71,10 @@
         }
         .checkbox-label {
             margin-right: 10px;
+        }        
+        .excluded {
+            text-decoration: line-through;
+            color: #999;
         }
     </style>
 </head>
@@ -144,13 +148,19 @@
                     name: name,
                     fridayCount: 0,
                     lastSelected: null,
-                    prefersFriday: false
+                    prefersFriday: false,
+                    excluded: false
                 });
                 
                 saveProfessors();
                 displayProfessors();
                 nameInput.value = '';
             }
+        }
+        
+        function updateExcluded(index, checked) {
+            professors[index].excluded = checked;
+            saveProfessors();
         }
         
         function removeProfessor(index) {
@@ -178,20 +188,26 @@
                     <div class="professor-actions">
                         <label class="checkbox-label">
                             <input type="checkbox" 
-                                   ${prof.prefersFriday ? 'checked' : ''}
-                                   onchange="updatePreference(${index}, this.checked)">
+                                ${prof.prefersFriday ? 'checked' : ''}
+                                onchange="updatePreference(${index}, this.checked)">
                             Permanente
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" 
+                                ${prof.excluded ? 'checked' : ''}
+                                onchange="updateExcluded(${index}, this.checked)">
+                            Excluir da rotação
                         </label>
                         <button onclick="removeProfessor(${index})">Remove</button>
                     </div>
                 `;
                 list.appendChild(div);
             });
-            
-            if (professors.length === 0) {
-                list.innerHTML = '<p>Nenhum professor foi adicionado ainda.</p>';
-            }
-        }
+    
+    if (professors.length === 0) {
+        list.innerHTML = '<p>Nenhum professor foi adicionado ainda.</p>';
+    }
+}
         
         function generateSchedule() {
             if (professors.length === 0) {
@@ -211,8 +227,23 @@
             // Create a working copy to track assignments
             const profCopy = JSON.parse(JSON.stringify(professors));
             
+            // Filter out excluded professors
+            const availableProfs = profCopy.filter(p => !p.excluded);
+            
+            if (availableProfs.length === 0) {
+                alert('No available professors for rotation (all are excluded)');
+                return;
+            }
+            
+            // Enhanced schedule to track status
+            const enhancedSchedule = Array(numFridays).fill().map(() => ({
+                name: null,
+                preferred: false,
+                excluded: false
+            }));
+            
             // First, handle professors who prefer Fridays
-            const preferredProfs = profCopy.filter(p => p.prefersFriday);
+            const preferredProfs = availableProfs.filter(p => p.prefersFriday);
             
             if (preferredProfs.length > 0) {
                 // Distribute preferred professors across available slots
@@ -222,10 +253,15 @@
                 const assignSlotsCount = Math.min(preferredProfs.length, numFridays);
                 for (let i = 0; i < assignSlotsCount; i++) {
                     schedule[i] = preferredProfs[i].name;
+                    enhancedSchedule[i] = {
+                        name: preferredProfs[i].name,
+                        preferred: true,
+                        excluded: false
+                    };
                     
                     // Mark as assigned in our working copy
-                    const index = profCopy.findIndex(p => p.name === preferredProfs[i].name);
-                    profCopy[index].assigned = true;
+                    const index = availableProfs.findIndex(p => p.name === preferredProfs[i].name);
+                    availableProfs[index].assigned = true;
                     
                     // Update actual professor stats
                     const realIndex = professors.findIndex(p => p.name === preferredProfs[i].name);
@@ -238,28 +274,33 @@
             for (let i = 0; i < numFridays; i++) {
                 if (schedule[i] === null) {
                     // Get unassigned professors sorted by lowest count
-                    let availableProfs = profCopy.filter(p => !p.assigned);
+                    let unassignedProfs = availableProfs.filter(p => !p.assigned);
                     
                     // If all professors are already assigned in this round, reset assignments
-                    if (availableProfs.length === 0) {
-                        profCopy.forEach(p => p.assigned = false);
-                        availableProfs = profCopy;
+                    if (unassignedProfs.length === 0) {
+                        availableProfs.forEach(p => p.assigned = false);
+                        unassignedProfs = availableProfs;
                     }
                     
                     // Sort by fridayCount (ascending)
-                    availableProfs.sort((a, b) => a.fridayCount - b.fridayCount);
+                    unassignedProfs.sort((a, b) => a.fridayCount - b.fridayCount);
                     
                     // Get all professors with the lowest count (could be multiple with same count)
-                    const lowestCount = availableProfs[0].fridayCount;
-                    const lowestCountProfs = availableProfs.filter(p => p.fridayCount === lowestCount);
+                    const lowestCount = unassignedProfs[0].fridayCount;
+                    const lowestCountProfs = unassignedProfs.filter(p => p.fridayCount === lowestCount);
                     
                     // Randomly select from professors with the lowest count
                     const selectedProf = lowestCountProfs[Math.floor(Math.random() * lowestCountProfs.length)];
                     schedule[i] = selectedProf.name;
+                    enhancedSchedule[i] = {
+                        name: selectedProf.name,
+                        preferred: selectedProf.prefersFriday,
+                        excluded: false
+                    };
                     
                     // Mark as assigned in working copy
-                    const index = profCopy.findIndex(p => p.name === selectedProf.name);
-                    profCopy[index].assigned = true;
+                    const index = availableProfs.findIndex(p => p.name === selectedProf.name);
+                    availableProfs[index].assigned = true;
                     
                     // Update actual professor stats
                     const realIndex = professors.findIndex(p => p.name === selectedProf.name);
@@ -268,10 +309,11 @@
                 }
             }
             
-            // Save to history
+            // Save to history with enhanced information
             history.unshift({
                 date: semesterDate,
-                schedule: schedule
+                schedule: enhancedSchedule,
+                excludedProfessors: professors.filter(p => p.excluded).map(p => p.name)
             });
             
             // Only keep last 10 history items
@@ -281,30 +323,46 @@
             
             saveProfessors();
             saveHistory();
-            displaySchedule(schedule);
+            displaySchedule(enhancedSchedule);
             displayHistory();
         }
         
         function displaySchedule(schedule) {
             const results = document.getElementById('results');
-            results.innerHTML = '<h3>Friday Schedule:</h3>';
+            results.innerHTML = '<h3>Professores que ministrarão aulas na sexta-feira:</h3>';
             
             const list = document.createElement('ol');
-            schedule.forEach((name, index) => {
+            schedule.forEach((entry, index) => {
                 const item = document.createElement('li');
-                item.textContent = name;
+                item.textContent = entry.name;
                 
                 // Highlight preferred assignments
-                const prof = professors.find(p => p.name === name);
-                if (prof && prof.prefersFriday) {
+                if (entry.preferred) {
                     item.classList.add('preference');
-                    item.textContent += ' (preferred)';
+                    item.textContent += ' (permanente)';
                 }
                 
                 list.appendChild(item);
             });
             
             results.appendChild(list);
+            
+            // Display excluded professors
+            const excludedProfs = professors.filter(p => p.excluded);
+            if (excludedProfs.length > 0) {
+                const excludedDiv = document.createElement('div');
+                excludedDiv.innerHTML = '<h4>Professores excluídos desta rotação:</h4>';
+                const excludedList = document.createElement('ul');
+                
+                excludedProfs.forEach(prof => {
+                    const item = document.createElement('li');
+                    item.textContent = prof.name;
+                    excludedList.appendChild(item);
+                });
+                
+                excludedDiv.appendChild(excludedList);
+                results.appendChild(excludedDiv);
+            }
         }
         
         function displayHistory() {
@@ -321,17 +379,52 @@
                 semesterDiv.className = 'container';
                 
                 const heading = document.createElement('h3');
-                heading.textContent = `Semester: ${item.date}`;
+                heading.textContent = `Semestre: ${item.date}`;
                 semesterDiv.appendChild(heading);
                 
                 const list = document.createElement('ol');
-                item.schedule.forEach(name => {
-                    const listItem = document.createElement('li');
-                    listItem.textContent = name;
-                    list.appendChild(listItem);
-                });
+                
+                // Handle both old format (just names) and new format (objects with status)
+                if (typeof item.schedule[0] === 'string') {
+                    // Old format
+                    item.schedule.forEach(name => {
+                        const listItem = document.createElement('li');
+                        listItem.textContent = name;
+                        list.appendChild(listItem);
+                    });
+                } else {
+                    // New format with status info
+                    item.schedule.forEach(entry => {
+                        const listItem = document.createElement('li');
+                        listItem.textContent = entry.name;
+                        
+                        if (entry.preferred) {
+                            listItem.classList.add('preference');
+                            listItem.textContent += ' (permanente)';
+                        }
+                        
+                        list.appendChild(listItem);
+                    });
+                }
                 
                 semesterDiv.appendChild(list);
+                
+                // Display excluded professors for this history item
+                if (item.excludedProfessors && item.excludedProfessors.length > 0) {
+                    const excludedDiv = document.createElement('div');
+                    excludedDiv.innerHTML = '<h4>Professores excluídos:</h4>';
+                    const excludedList = document.createElement('ul');
+                    
+                    item.excludedProfessors.forEach(name => {
+                        const excItem = document.createElement('li');
+                        excItem.textContent = name;
+                        excludedList.appendChild(excItem);
+                    });
+                    
+                    excludedDiv.appendChild(excludedList);
+                    semesterDiv.appendChild(excludedDiv);
+                }
+                
                 historyDiv.appendChild(semesterDiv);
             });
         }
@@ -556,6 +649,7 @@
         }
         
         // Export to Word (HTML format)
+        // Export to Word (HTML format)
         function exportToWord() {
             if (professors.length === 0 && history.length === 0) {
                 alert('Não há dados para exportar');
@@ -576,6 +670,7 @@
                         th { background-color: #f2f2f2; }
                         h1, h2 { color: #333; }
                         .preference { background-color: #b3e6ff; }
+                        .excluded { color: #999; text-decoration: line-through; }
                     </style>
                 </head>
                 <body>
@@ -588,18 +683,21 @@
                             <th>Semestres na sexta-feira</th>
                             <th>Última seleção</th>
                             <th>Preferência</th>
+                            <th>Excluído</th>
                         </tr>
             `;
             
             // Add professor rows
             professors.forEach(prof => {
                 const preferClass = prof.prefersFriday ? ' class="preference"' : '';
+                const excludedClass = prof.excluded ? ' class="excluded"' : '';
                 htmlContent += `
-                    <tr${preferClass}>
+                    <tr${prof.prefersFriday ? preferClass : ''}${prof.excluded ? excludedClass : ''}>
                         <td>${prof.name}</td>
                         <td>${prof.fridayCount}</td>
                         <td>${prof.lastSelected || ''}</td>
                         <td>${prof.prefersFriday ? 'Permanente' : ''}</td>
+                        <td>${prof.excluded ? 'Sim' : ''}</td>
                     </tr>
                 `;
             });
@@ -620,17 +718,47 @@
                         <ol>
                     `;
                     
-                    item.schedule.forEach(name => {
-                        const prof = professors.find(p => p.name === name);
-                        const preferClass = prof && prof.prefersFriday ? ' class="preference"' : '';
-                        htmlContent += `
-                            <li${preferClass}>${name}${prof && prof.prefersFriday ? ' (permanente)' : ''}</li>
-                        `;
-                    });
+                    // Handle both old format (string names) and new format (objects with properties)
+                    if (item.schedule && item.schedule.length > 0) {
+                        if (typeof item.schedule[0] === 'string') {
+                            // Old format - array of names
+                            item.schedule.forEach(name => {
+                                const prof = professors.find(p => p.name === name);
+                                const preferClass = prof && prof.prefersFriday ? ' class="preference"' : '';
+                                htmlContent += `
+                                    <li${preferClass}>${name}${prof && prof.prefersFriday ? ' (permanente)' : ''}</li>
+                                `;
+                            });
+                        } else {
+                            // New format - array of objects with status
+                            item.schedule.forEach(entry => {
+                                const preferClass = entry.preferred ? ' class="preference"' : '';
+                                htmlContent += `
+                                    <li${preferClass}>${entry.name}${entry.preferred ? ' (permanente)' : ''}</li>
+                                `;
+                            });
+                        }
+                    }
                     
                     htmlContent += `
                         </ol>
                     `;
+                    
+                    // Add excluded professors section if available
+                    if (item.excludedProfessors && item.excludedProfessors.length > 0) {
+                        htmlContent += `
+                            <h4>Professores excluídos desta rotação:</h4>
+                            <ul class="excluded">
+                        `;
+                        
+                        item.excludedProfessors.forEach(name => {
+                            htmlContent += `<li>${name}</li>`;
+                        });
+                        
+                        htmlContent += `
+                            </ul>
+                        `;
+                    }
                 });
             }
             
