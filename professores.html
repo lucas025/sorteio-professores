@@ -76,6 +76,29 @@
             text-decoration: line-through;
             color: #999;
         }
+        .etapas-selection {
+            margin-top: 10px;
+        }
+        
+        .etapa-checkboxes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .etapa-checkbox-label {
+            display: inline-block;
+            padding: 4px 8px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            margin-right: 5px;
+            font-size: 0.9em;
+        }
+        
+        .professor-details {
+            display: flex;
+            flex-direction: column;
+        }
     </style>
 </head>
 <body>
@@ -98,6 +121,16 @@
             <input type="file" id="file-import" accept=".json" onchange="importProfessors(this.files)">
             <input type="file" id="csv-import" accept=".csv" style="display:none" onchange="importFromCsv(this.files)">
         </div>
+    </div>
+    <div class="container">
+    <h2>Configuração de Etapas</h2>
+    <div>
+        <p>Selecione as etapas ativas neste semestre:</p>
+        <div id="etapas-selection">
+            <!-- Etapas checkboxes will be added here -->
+        </div>
+        <button onclick="saveActiveEtapas()">Salvar Configuração de Etapas</button>
+    </div>
     </div>
     
     <div class="container">
@@ -123,7 +156,9 @@
         // Initialize data
         let professors = JSON.parse(localStorage.getItem('professors')) || [];
         let history = JSON.parse(localStorage.getItem('fridayHistory')) || [];
+        let activeEtapas = JSON.parse(localStorage.getItem('activeEtapas')) || [true, true, true, true, true, true, true, true, true, true];
         
+
         // Convert old preference format to new if needed
         professors = professors.map(prof => {
             if (prof.preferredFriday !== undefined && prof.prefersFriday === undefined) {
@@ -134,11 +169,22 @@
         });
         
         // Display professors on load
+        // Update the DOMContentLoaded listener
         document.addEventListener('DOMContentLoaded', function() {
             displayProfessors();
             displayHistory();
+            displayEtapaSelection();
+            
+            // Upgrade existing professors if they don't have etapas property
+            professors.forEach(prof => {
+                if (!prof.etapas) {
+                    prof.etapas = [false, false, false, false, false, false, false, false, false, false];
+                }
+            });
+            saveProfessors();
         });
         
+        // Modify the addProfessor function to include etapas
         function addProfessor() {
             const nameInput = document.getElementById('professor-name');
             const name = nameInput.value.trim();
@@ -149,7 +195,8 @@
                     fridayCount: 0,
                     lastSelected: null,
                     prefersFriday: false,
-                    excluded: false
+                    excluded: false,
+                    etapas: [false, false, false, false, false, false, false, false, false, false] // Etapas 1-10
                 });
                 
                 saveProfessors();
@@ -174,50 +221,132 @@
             saveProfessors();
         }
         
-        function displayProfessors() {
+          function displayProfessors() {
             const list = document.getElementById('professor-list');
             list.innerHTML = '';
             
             professors.forEach((prof, index) => {
                 const div = document.createElement('div');
                 div.className = 'professor-item';
-                div.innerHTML = `
-                    <div class="professor-details">
-                        <span>${prof.name} (Quantidade de semestres em que deu aula na sexta-feira: ${prof.fridayCount})</span>
-                    </div>
-                    <div class="professor-actions">
-                        <label class="checkbox-label">
-                            <input type="checkbox" 
-                                ${prof.prefersFriday ? 'checked' : ''}
-                                onchange="updatePreference(${index}, this.checked)">
-                            Permanente
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" 
-                                ${prof.excluded ? 'checked' : ''}
-                                onchange="updateExcluded(${index}, this.checked)">
-                            Excluir da rotação
-                        </label>
-                        <button onclick="removeProfessor(${index})">Remover</button>
-                    </div>
+                
+                // Create the main professor info
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'professor-details';
+                infoDiv.innerHTML = `
+                    <span>${prof.name} (Quantidade de semestres em que deu aula na sexta-feira: ${prof.fridayCount})</span>
                 `;
+                
+                // Create etapa selection
+                const etapasDiv = document.createElement('div');
+                etapasDiv.className = 'etapas-selection';
+                etapasDiv.innerHTML = '<h4>Etapas:</h4>';
+                
+                const etapaCheckboxes = document.createElement('div');
+                etapaCheckboxes.className = 'etapa-checkboxes';
+                
+                // Create checkboxes only for active etapas
+                activeEtapas.forEach((isActive, etapaIndex) => {
+                    if (isActive) {
+                        const label = document.createElement('label');
+                        label.className = 'etapa-checkbox-label';
+                        label.innerHTML = `
+                            <input type="checkbox" 
+                                ${prof.etapas && prof.etapas[etapaIndex] ? 'checked' : ''}
+                                onchange="updateEtapa(${index}, ${etapaIndex}, this.checked)">
+                            Etapa ${etapaIndex + 1}
+                        `;
+                        etapaCheckboxes.appendChild(label);
+                    }
+                });
+                
+                etapasDiv.appendChild(etapaCheckboxes);
+                infoDiv.appendChild(etapasDiv);
+                
+                // Create the actions div
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'professor-actions';
+                actionsDiv.innerHTML = `
+                    <label class="checkbox-label">
+                        <input type="checkbox" 
+                            ${prof.prefersFriday ? 'checked' : ''}
+                            onchange="updatePreference(${index}, this.checked)">
+                        Permanente
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" 
+                            ${prof.excluded ? 'checked' : ''}
+                            onchange="updateExcluded(${index}, this.checked)">
+                        Excluir da rotação
+                    </label>
+                    <button onclick="removeProfessor(${index})">Remover</button>
+                `;
+                
+                div.appendChild(infoDiv);
+                div.appendChild(actionsDiv);
                 list.appendChild(div);
             });
-    
-    if (professors.length === 0) {
-        list.innerHTML = '<p>Nenhum professor foi adicionado ainda.</p>';
-    }
-}
+            
+            if (professors.length === 0) {
+                list.innerHTML = '<p>Nenhum professor foi adicionado ainda.</p>';
+            }
+        }
         
+       
+        // Initialize etapa selection UI
+        function displayEtapaSelection() {
+            const etapasDiv = document.getElementById('etapas-selection');
+            etapasDiv.innerHTML = '';
+            
+            for (let i = 0; i < 10; i++) {
+                const label = document.createElement('label');
+                label.className = 'etapa-checkbox-label';
+                label.innerHTML = `
+                    <input type="checkbox" 
+                        ${activeEtapas[i] ? 'checked' : ''}
+                        onchange="toggleEtapa(${i}, this.checked)">
+                    Etapa ${i + 1}
+                `;
+                etapasDiv.appendChild(label);
+            }
+        }
+        
+        // Toggle active etapa
+        function toggleEtapa(etapaIndex, isActive) {
+            activeEtapas[etapaIndex] = isActive;
+        }
+        
+        // Save active etapas config
+        function saveActiveEtapas() {
+            localStorage.setItem('activeEtapas', JSON.stringify(activeEtapas));
+            alert('Configuração de etapas salva com sucesso!');
+            displayProfessors(); // Refresh professor display to show only active etapas
+        }
+        
+        // Update professor's etapa assignment
+        function updateEtapa(profIndex, etapaIndex, isAssigned) {
+            if (!professors[profIndex].etapas) {
+                professors[profIndex].etapas = [false, false, false, false, false, false, false, false, false, false];
+            }
+            professors[profIndex].etapas[etapaIndex] = isAssigned;
+            saveProfessors();
+        }
+
         function generateSchedule() {
             if (professors.length === 0) {
-                alert('Please add professors first');
+                alert('Por favor, adicione professores primeiro');
                 return;
             }
             
             const numFridays = parseInt(document.getElementById('num-fridays').value);
             if (isNaN(numFridays) || numFridays < 1) {
-                alert('Please enter a valid number of Fridays');
+                alert('Por favor, insira um número válido de sextas-feiras');
+                return;
+            }
+            
+            // Count active etapas
+            const activeEtapaCount = activeEtapas.filter(isActive => isActive).length;
+            if (activeEtapaCount === 0) {
+                alert('Por favor, ative pelo menos uma etapa');
                 return;
             }
             
@@ -231,49 +360,171 @@
             const availableProfs = profCopy.filter(p => !p.excluded);
             
             if (availableProfs.length === 0) {
-                alert('No available professors for rotation (all are excluded)');
+                alert('Não há professores disponíveis para a rotação (todos foram excluídos)');
                 return;
             }
             
-            // Enhanced schedule to track status
+            // Enhanced schedule to track status and etapas
             const enhancedSchedule = Array(numFridays).fill().map(() => ({
                 name: null,
                 preferred: false,
-                excluded: false
+                excluded: false,
+                etapas: []
             }));
             
-            // First, handle professors who prefer Fridays
+            // Track which etapas have been assigned
+            const assignedEtapas = Array(10).fill(false);
+            
+            // STEP 1: First handle preferred professors and their etapas
             const preferredProfs = availableProfs.filter(p => p.prefersFriday);
             
             if (preferredProfs.length > 0) {
-                // Distribute preferred professors across available slots
-                // If more preferred profs than slots, we'll take lowest count first
-                preferredProfs.sort((a, b) => a.fridayCount - b.fridayCount);
+                // For each preferred professor
+                preferredProfs.forEach(prof => {
+                    // Check if they have any etapas they can teach
+                    if (!prof.etapas || !prof.etapas.some((canTeach, idx) => canTeach && activeEtapas[idx])) {
+                        return; // No etapas to teach, continue to next professor
+                    }
+                    
+                    // Find etapas this professor can teach that are active and not assigned yet
+                    let assignableEtapas = [];
+                    prof.etapas.forEach((canTeach, idx) => {
+                        if (canTeach && activeEtapas[idx] && !assignedEtapas[idx]) {
+                            assignableEtapas.push(idx);
+                        }
+                    });
+                    
+                    // If no unassigned etapas, consider any etapas they can teach
+                    if (assignableEtapas.length === 0) {
+                        prof.etapas.forEach((canTeach, idx) => {
+                            if (canTeach && activeEtapas[idx]) {
+                                assignableEtapas.push(idx);
+                            }
+                        });
+                    }
+                    
+                    // If there are etapas to assign, find next available slot
+                    if (assignableEtapas.length > 0 && !prof.assigned) {
+                        // Pick random etapa from assignable ones
+                        const randomEtapaIdx = assignableEtapas[Math.floor(Math.random() * assignableEtapas.length)];
+                        
+                        // Find next available slot
+                        let slotIndex = schedule.findIndex(slot => slot === null);
+                        if (slotIndex === -1) return; // No slots available
+                        
+                        // Assign professor to this slot
+                        schedule[slotIndex] = prof.name;
+                        enhancedSchedule[slotIndex] = {
+                            name: prof.name,
+                            preferred: true,
+                            excluded: false,
+                            etapas: [randomEtapaIdx + 1]  // Store etapa number (1-based)
+                        };
+                        
+                        // Mark the etapa as assigned
+                        assignedEtapas[randomEtapaIdx] = true;
+                        
+                        // Mark professor as assigned
+                        const index = availableProfs.findIndex(p => p.name === prof.name);
+                        availableProfs[index].assigned = true;
+                        
+                        // Update actual professor stats
+                        const realIndex = professors.findIndex(p => p.name === prof.name);
+                        professors[realIndex].fridayCount++;
+                        professors[realIndex].lastSelected = semesterDate;
+                    }
+                });
+            }
+            
+            // STEP 2: Now ensure each active etapa has at least one assigned professor
+            activeEtapas.forEach((isActive, etapaIndex) => {
+                if (!isActive || assignedEtapas[etapaIndex]) return; // Skip inactive or already assigned etapas
                 
-                const assignSlotsCount = Math.min(preferredProfs.length, numFridays);
-                for (let i = 0; i < assignSlotsCount; i++) {
-                    schedule[i] = preferredProfs[i].name;
-                    enhancedSchedule[i] = {
-                        name: preferredProfs[i].name,
-                        preferred: true,
-                        excluded: false
-                    };
-                    
-                    // Mark as assigned in our working copy
-                    const index = availableProfs.findIndex(p => p.name === preferredProfs[i].name);
-                    availableProfs[index].assigned = true;
-                    
-                    // Update actual professor stats
-                    const realIndex = professors.findIndex(p => p.name === preferredProfs[i].name);
-                    professors[realIndex].fridayCount++;
-                    professors[realIndex].lastSelected = semesterDate;
+                // Find professors who can teach this etapa
+                const etapaProfs = availableProfs.filter(p => 
+                    p.etapas && p.etapas[etapaIndex] && !p.assigned
+                );
+                
+                if (etapaProfs.length === 0) {
+                    alert(`Advertência: Nenhum professor disponível para Etapa ${etapaIndex + 1}`);
+                    return;
+                }
+                
+                // Sort by friday count (ascending)
+                etapaProfs.sort((a, b) => a.fridayCount - b.fridayCount);
+                
+                // Find next available slot
+                let slotIndex = schedule.findIndex(slot => slot === null);
+                if (slotIndex === -1) return; // No slots available
+                
+                // Assign professor with lowest count for this etapa
+                const selectedProf = etapaProfs[0];
+                schedule[slotIndex] = selectedProf.name;
+                enhancedSchedule[slotIndex] = {
+                    name: selectedProf.name,
+                    preferred: selectedProf.prefersFriday,
+                    excluded: false,
+                    etapas: [etapaIndex + 1]  // Store etapa number (1-based)
+                };
+                
+                // Mark the etapa as assigned
+                assignedEtapas[etapaIndex] = true;
+                
+                // Mark as assigned in working copy
+                const index = availableProfs.findIndex(p => p.name === selectedProf.name);
+                availableProfs[index].assigned = true;
+                
+                // Update actual professor stats
+                const realIndex = professors.findIndex(p => p.name === selectedProf.name);
+                professors[realIndex].fridayCount++;
+                professors[realIndex].lastSelected = semesterDate;
+            });
+            
+            // STEP 3: Process remaining preferred professors who haven't been assigned yet
+            const remainingPreferredProfs = availableProfs.filter(p => p.prefersFriday && !p.assigned);
+            
+            if (remainingPreferredProfs.length > 0) {
+                // Sort by fridayCount (ascending)
+                remainingPreferredProfs.sort((a, b) => a.fridayCount - b.fridayCount);
+                
+                // Assign to remaining slots
+                for (let i = 0; i < schedule.length; i++) {
+                    if (schedule[i] === null && remainingPreferredProfs.length > 0) {
+                        const selectedProf = remainingPreferredProfs.shift();
+                        schedule[i] = selectedProf.name;
+                        
+                        // Determine which etapas this professor can teach
+                        const profEtapas = [];
+                        if (selectedProf.etapas) {
+                            selectedProf.etapas.forEach((canTeach, idx) => {
+                                if (canTeach && activeEtapas[idx]) {
+                                    profEtapas.push(idx + 1); // Store etapa number (1-based)
+                                }
+                            });
+                        }
+                        
+                        enhancedSchedule[i] = {
+                            name: selectedProf.name,
+                            preferred: true,
+                            excluded: false,
+                            etapas: profEtapas
+                        };
+                        
+                        // Mark as assigned and update stats
+                        const index = availableProfs.findIndex(p => p.name === selectedProf.name);
+                        availableProfs[index].assigned = true;
+                        
+                        const realIndex = professors.findIndex(p => p.name === selectedProf.name);
+                        professors[realIndex].fridayCount++;
+                        professors[realIndex].lastSelected = semesterDate;
+                    }
                 }
             }
             
-            // Fill remaining slots by professor count (lowest first)
+            // STEP 4: Fill remaining slots by professor count (lowest first)
             for (let i = 0; i < numFridays; i++) {
                 if (schedule[i] === null) {
-                    // Get unassigned professors sorted by lowest count
+                    // Get unassigned professors
                     let unassignedProfs = availableProfs.filter(p => !p.assigned);
                     
                     // If all professors are already assigned in this round, reset assignments
@@ -285,17 +536,29 @@
                     // Sort by fridayCount (ascending)
                     unassignedProfs.sort((a, b) => a.fridayCount - b.fridayCount);
                     
-                    // Get all professors with the lowest count (could be multiple with same count)
+                    // Get all professors with the lowest count
                     const lowestCount = unassignedProfs[0].fridayCount;
                     const lowestCountProfs = unassignedProfs.filter(p => p.fridayCount === lowestCount);
                     
                     // Randomly select from professors with the lowest count
                     const selectedProf = lowestCountProfs[Math.floor(Math.random() * lowestCountProfs.length)];
                     schedule[i] = selectedProf.name;
+                    
+                    // Determine which etapas this professor can teach
+                    const profEtapas = [];
+                    if (selectedProf.etapas) {
+                        selectedProf.etapas.forEach((canTeach, idx) => {
+                            if (canTeach && activeEtapas[idx]) {
+                                profEtapas.push(idx + 1); // Store etapa number (1-based)
+                            }
+                        });
+                    }
+                    
                     enhancedSchedule[i] = {
                         name: selectedProf.name,
                         preferred: selectedProf.prefersFriday,
-                        excluded: false
+                        excluded: false,
+                        etapas: profEtapas
                     };
                     
                     // Mark as assigned in working copy
@@ -313,7 +576,8 @@
             history.unshift({
                 date: semesterDate,
                 schedule: enhancedSchedule,
-                excludedProfessors: professors.filter(p => p.excluded).map(p => p.name)
+                excludedProfessors: professors.filter(p => p.excluded).map(p => p.name),
+                activeEtapas: activeEtapas.map((isActive, idx) => isActive ? idx + 1 : null).filter(e => e !== null)
             });
             
             // Only keep last 10 history items
@@ -323,6 +587,7 @@
             
             saveProfessors();
             saveHistory();
+            saveActiveEtapas(); // Save active etapas configuration
             displaySchedule(enhancedSchedule);
             displayHistory();
         }
@@ -340,6 +605,14 @@
                 if (entry.preferred) {
                     item.classList.add('preference');
                     item.textContent += ' (permanente)';
+                }
+                
+                // Add etapa information if available
+                if (entry.etapas && entry.etapas.length > 0) {
+                    const etapaSpan = document.createElement('span');
+                    etapaSpan.className = 'etapa-info';
+                    etapaSpan.textContent = ` - Etapas: ${entry.etapas.join(', ')}`;
+                    item.appendChild(etapaSpan);
                 }
                 
                 list.appendChild(item);
@@ -382,18 +655,25 @@
                 heading.textContent = `Semestre: ${item.date}`;
                 semesterDiv.appendChild(heading);
                 
+                // Display active etapas for this semester
+                if (item.activeEtapas && item.activeEtapas.length > 0) {
+                    const etapasInfo = document.createElement('p');
+                    etapasInfo.innerHTML = `<strong>Etapas ativas:</strong> ${item.activeEtapas.join(', ')}`;
+                    semesterDiv.appendChild(etapasInfo);
+                }
+                
                 const list = document.createElement('ol');
                 
-                // Handle both old format (just names) and new format (objects with status)
+                // Handle different formats including the new format with etapas
                 if (typeof item.schedule[0] === 'string') {
-                    // Old format
+                    // Old format - array of names
                     item.schedule.forEach(name => {
                         const listItem = document.createElement('li');
                         listItem.textContent = name;
                         list.appendChild(listItem);
                     });
                 } else {
-                    // New format with status info
+                    // New format with status info and potentially etapas
                     item.schedule.forEach(entry => {
                         const listItem = document.createElement('li');
                         listItem.textContent = entry.name;
@@ -401,6 +681,14 @@
                         if (entry.preferred) {
                             listItem.classList.add('preference');
                             listItem.textContent += ' (permanente)';
+                        }
+                        
+                        // Add etapa information if available
+                        if (entry.etapas && entry.etapas.length > 0) {
+                            const etapaSpan = document.createElement('span');
+                            etapaSpan.className = 'etapa-info';
+                            etapaSpan.textContent = ` - Etapas: ${entry.etapas.join(', ')}`;
+                            listItem.appendChild(etapaSpan);
                         }
                         
                         list.appendChild(listItem);
@@ -616,15 +904,34 @@
             }
             
             // Create CSV content
-            let csvContent = 'Nome,Quantidade de Semestres,Última Seleção,Preferência\n';
+            let csvContent = 'Nome,Quantidade de Semestres,Última Seleção,Preferência,Excluído,Etapas\n';
             
             professors.forEach(prof => {
                 // Escape quotes in the name if any
                 const name = prof.name.includes('"') ? `"${prof.name.replace(/"/g, '""')}"` : prof.name;
                 const lastSelected = prof.lastSelected || '';
                 const prefersFriday = prof.prefersFriday ? 'Sim' : 'Não';
+                const excluded = prof.excluded ? 'Sim' : 'Não';
                 
-                csvContent += `${name},${prof.fridayCount},${lastSelected},${prefersFriday}\n`;
+                // Format etapas
+                let etapaStr = '';
+                if (prof.etapas) {
+                    const assignedEtapas = [];
+                    prof.etapas.forEach((assigned, idx) => {
+                        if (assigned) assignedEtapas.push(idx + 1);
+                    });
+                    etapaStr = assignedEtapas.join(', ');
+                }
+                
+                csvContent += `${name},${prof.fridayCount},${lastSelected},${prefersFriday},${excluded},${etapaStr}\n`;
+            });
+            
+            // Add active etapas information
+            csvContent += '\n\nEtapas Ativas\n';
+            activeEtapas.forEach((isActive, idx) => {
+                if (isActive) {
+                    csvContent += `${idx + 1}\n`;
+                }
             });
             
             // Add history section
@@ -632,9 +939,32 @@
                 csvContent += '\n\nHistórico\n';
                 history.forEach(item => {
                     csvContent += `\nSemestre: ${item.date}\n`;
-                    item.schedule.forEach((name, index) => {
-                        csvContent += `${index + 1},${name}\n`;
-                    });
+                    
+                    // Add active etapas for this semester
+                    if (item.activeEtapas && item.activeEtapas.length > 0) {
+                        csvContent += `Etapas ativas: ${item.activeEtapas.join(', ')}\n`;
+                    }
+                    
+                    // Add schedule
+                    if (item.schedule) {
+                        if (typeof item.schedule[0] === 'string') {
+                            // Old format
+                            item.schedule.forEach((name, index) => {
+                                csvContent += `${index + 1},${name}\n`;
+                            });
+                        } else {
+                            // New format with etapas
+                            item.schedule.forEach((entry, index) => {
+                                const etapas = entry.etapas ? `,Etapas: ${entry.etapas.join(', ')}` : '';
+                                csvContent += `${index + 1},${entry.name}${entry.preferred ? ' (permanente)' : ''}${etapas}\n`;
+                            });
+                        }
+                    }
+                    
+                    // Add excluded professors
+                    if (item.excludedProfessors && item.excludedProfessors.length > 0) {
+                        csvContent += `\nProfessores excluídos: ${item.excludedProfessors.join(', ')}\n`;
+                    }
                 });
             }
             
@@ -650,6 +980,7 @@
         
         // Export to Word (HTML format)
         // Export to Word (HTML format)
+        // Update exportToWord to include etapa information
         function exportToWord() {
             if (professors.length === 0 && history.length === 0) {
                 alert('Não há dados para exportar');
@@ -671,6 +1002,7 @@
                         h1, h2 { color: #333; }
                         .preference { background-color: #b3e6ff; }
                         .excluded { color: #999; text-decoration: line-through; }
+                        .etapas { margin-left: 10px; font-style: italic; }
                     </style>
                 </head>
                 <body>
@@ -684,6 +1016,7 @@
                             <th>Última seleção</th>
                             <th>Preferência</th>
                             <th>Excluído</th>
+                            <th>Etapas</th>
                         </tr>
             `;
             
@@ -691,6 +1024,17 @@
             professors.forEach(prof => {
                 const preferClass = prof.prefersFriday ? ' class="preference"' : '';
                 const excludedClass = prof.excluded ? ' class="excluded"' : '';
+                
+                // Format etapas
+                let etapaStr = '';
+                if (prof.etapas) {
+                    const assignedEtapas = [];
+                    prof.etapas.forEach((assigned, idx) => {
+                        if (assigned) assignedEtapas.push(idx + 1);
+                    });
+                    etapaStr = assignedEtapas.join(', ');
+                }
+                
                 htmlContent += `
                     <tr${prof.prefersFriday ? preferClass : ''}${prof.excluded ? excludedClass : ''}>
                         <td>${prof.name}</td>
@@ -698,6 +1042,7 @@
                         <td>${prof.lastSelected || ''}</td>
                         <td>${prof.prefersFriday ? 'Permanente' : ''}</td>
                         <td>${prof.excluded ? 'Sim' : ''}</td>
+                        <td>${etapaStr}</td>
                     </tr>
                 `;
             });
@@ -715,8 +1060,16 @@
                 history.forEach(item => {
                     htmlContent += `
                         <h3>Semestre: ${item.date}</h3>
-                        <ol>
                     `;
+                    
+                    // Show active etapas if available
+                    if (item.activeEtapas && item.activeEtapas.length > 0) {
+                        htmlContent += `
+                            <p><strong>Etapas ativas:</strong> ${item.activeEtapas.join(', ')}</p>
+                        `;
+                    }
+                    
+                    htmlContent += `<ol>`;
                     
                     // Handle both old format (string names) and new format (objects with properties)
                     if (item.schedule && item.schedule.length > 0) {
@@ -730,11 +1083,18 @@
                                 `;
                             });
                         } else {
-                            // New format - array of objects with status
+                            // New format - array of objects with status and etapas
                             item.schedule.forEach(entry => {
                                 const preferClass = entry.preferred ? ' class="preference"' : '';
+                                
+                                // Format etapas info
+                                let etapaStr = '';
+                                if (entry.etapas && entry.etapas.length > 0) {
+                                    etapaStr = ` <span class="etapas">(Etapas: ${entry.etapas.join(', ')})</span>`;
+                                }
+                                
                                 htmlContent += `
-                                    <li${preferClass}>${entry.name}${entry.preferred ? ' (permanente)' : ''}</li>
+                                    <li${preferClass}>${entry.name}${entry.preferred ? ' (permanente)' : ''}${etapaStr}</li>
                                 `;
                             });
                         }
@@ -779,6 +1139,10 @@
             URL.revokeObjectURL(url);
         }
 
+        // Add this with the other save functions
+        function saveActiveEtapas() {
+            localStorage.setItem('activeEtapas', JSON.stringify(activeEtapas));
+        }
         // Import professors and history data from JSON file
         function importProfessors(files) {
             if (!files || files.length === 0) return;
